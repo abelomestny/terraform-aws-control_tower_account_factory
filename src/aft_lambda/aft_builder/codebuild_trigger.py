@@ -4,8 +4,9 @@
 import datetime
 import inspect
 import logging
+import re
 import time
-from typing import Any, Dict, TypedDict, Union
+from typing import Any, Dict, TypedDict
 
 from boto3.session import Session
 
@@ -19,18 +20,20 @@ class LayerBuildStatus(TypedDict):
 
 # This function is directly responsible for building `aft_common` library
 # Do not import  `aft_common` into this handler!
-def lambda_handler(
-    event: Dict[str, Any], context: Union[Dict[str, Any], None]
-) -> LayerBuildStatus:
+def lambda_handler(event: Dict[str, Any], context: Dict[str, Any]) -> LayerBuildStatus:
+    session = Session()
     try:
-        session = Session()
         client = session.client("codebuild")
 
         codebuild_project_name = event["codebuild_project_name"]
         job_id = client.start_build(projectName=codebuild_project_name)["build"]["id"]
-
-        logger.info(f"Started build project {codebuild_project_name} job {job_id}")
-
+        sanitized_codebuild_project_name = re.sub(
+            r"[^a-zA-Z0-9-_]", "", codebuild_project_name
+        )
+        sanitized_job_id = re.sub(r"[^a-zA-Z0-9-_]", "", job_id)
+        logger.info(
+            f"Started build project {sanitized_codebuild_project_name} job {sanitized_job_id}"
+        )
         # Wait at least 30 seconds for the build to initialize
         time.sleep(30)
 
@@ -45,20 +48,21 @@ def lambda_handler(
                 time.sleep(10)
                 continue
             elif job_status == "SUCCEEDED":
-                logger.info(f"Build job {job_id} completed successfully")
+                logger.info(f"Build job {sanitized_job_id} completed successfully")
                 return {"Status": 200}
             else:
-                logger.info(f"Build {job_id} failed - non-success terminal status")
+                logger.info(
+                    f"Build {sanitized_job_id} failed - non-success terminal status"
+                )
                 raise Exception(f"Build {job_id} failed - non-success terminal status")
-
-        logger.info(f"Build {job_id} failed - time out")
+        logger.info(f"Build {sanitized_job_id} failed - time out")
         raise Exception(f"Build {job_id} failed - time out")
 
-    except Exception as e:
+    except Exception as error:
         message = {
             "FILE": __file__.split("/")[-1],
             "METHOD": inspect.stack()[0][3],
-            "EXCEPTION": str(e),
+            "EXCEPTION": str(error),
         }
         logger.exception(message)
         raise

@@ -45,12 +45,8 @@ variable "aft_framework_repo_url" {
 
 variable "aft_framework_repo_git_ref" {
   description = "Git branch from which the AFT framework should be sourced from"
-  default     = "main"
+  default     = null
   type        = string
-  validation {
-    condition     = length(var.aft_framework_repo_git_ref) > 0
-    error_message = "Variable var: aft_framework_repo_git_ref cannot be empty."
-  }
 }
 
 variable "aft_management_account_id" {
@@ -66,7 +62,7 @@ variable "ct_home_region" {
   description = "The region from which this module will be executed. This MUST be the same region as Control Tower is deployed."
   type        = string
   validation {
-    condition     = can(regex("(us(-gov)?|ap|ca|cn|eu|sa)-(central|(north|south)?(east|west)?)-\\d", var.ct_home_region))
+    condition     = can(regex("(us(-gov)?|ap|ca|cn|eu|sa|me|af|il)-(central|(north|south)?(east|west)?)-\\d", var.ct_home_region))
     error_message = "Variable var: region is not valid."
   }
 }
@@ -81,13 +77,42 @@ variable "cloudwatch_log_group_retention" {
   }
 }
 
+variable "backup_recovery_point_retention" {
+  description = "Number of days to keep backup recovery points in AFT DynamoDB tables. Default = Never Expire"
+  type        = number
+  default     = null
+  validation {
+    condition     = var.backup_recovery_point_retention == null ? true : (var.backup_recovery_point_retention >= 1 && var.backup_recovery_point_retention <= 36500)
+    error_message = "Value must be between 1 and 36500."
+  }
+}
+variable "log_archive_bucket_object_expiration_days" {
+  description = "Amount of days to keep the objects stored in the AFT logging bucket"
+  type        = number
+  default     = 365
+  validation {
+    condition     = var.log_archive_bucket_object_expiration_days > 0
+    error_message = "Log_archive_bucket_object_expiration_days must be an integer greater than 0."
+  }
+}
+
+variable "aft_backend_bucket_access_logs_object_expiration_days" {
+  description = "Amount of days to keep the objects stored in the access logs bucket for AFT backend buckets"
+  type        = number
+  default     = 365
+  validation {
+    condition     = var.aft_backend_bucket_access_logs_object_expiration_days > 0
+    error_message = "aft_backend_bucket_access_logs_object_expiration_days must be an integer greater than 0."
+  }
+}
+
 variable "maximum_concurrent_customizations" {
   description = "Maximum number of customizations/pipelines to run at once"
   type        = number
   default     = 5
   validation {
     condition     = var.maximum_concurrent_customizations > 0
-    error_message = "Variable var: maximum_concurrent_customizations must be greater than 0."
+    error_message = "Maximum_concurrent_customizations must be greater than 0."
   }
 }
 
@@ -98,6 +123,16 @@ variable "aft_vpc_endpoints" {
   validation {
     condition     = contains([true, false], var.aft_vpc_endpoints)
     error_message = "Valid values for var: aft_vpc_endpoints are (true, false)."
+  }
+}
+
+variable "concurrent_account_factory_actions" {
+  description = "Maximum number of accounts that can be provisioned in parallel."
+  type        = number
+  default     = 5
+  validation {
+    condition     = var.concurrent_account_factory_actions > 0
+    error_message = "Maximum_concurrent_accounts_being_provisioned must be greater than 0."
   }
 }
 
@@ -255,7 +290,7 @@ variable "account_provisioning_customizations_repo_branch" {
 variable "terraform_version" {
   description = "Terraform version being used for AFT"
   type        = string
-  default     = "0.15.5"
+  default     = "1.6.0"
   validation {
     condition     = can(regex("\\bv?\\d+(\\.\\d+)+[\\-\\w]*\\b", var.terraform_version))
     error_message = "Invalid value for var: terraform_version."
@@ -273,10 +308,11 @@ variable "terraform_distribution" {
 }
 
 variable "tf_backend_secondary_region" {
+  default     = ""
   type        = string
   description = "AFT creates a backend for state tracking for its own state as well as OSS cases. The backend's primary region is the same as the AFT region, but this defines the secondary region to replicate to."
   validation {
-    condition     = can(regex("(us(-gov)?|ap|ca|cn|eu|sa)-(central|(north|south)?(east|west)?)-\\d", var.tf_backend_secondary_region))
+    condition     = var.tf_backend_secondary_region == "" || can(regex("(us(-gov)?|ap|ca|cn|eu|sa|me|af)-(central|(north|south)?(east|west)?)-\\d", var.tf_backend_secondary_region))
     error_message = "Variable var: tf_backend_secondary_region is not valid."
   }
 }
@@ -285,7 +321,7 @@ variable "tf_backend_secondary_region" {
 variable "terraform_token" {
   type        = string
   description = "Terraform token for Cloud or Enterprise"
-  default     = "null"
+  default     = "null" # Non-sensitive default value #tfsec:ignore:general-secrets-no-plaintext-exposure
   sensitive   = true
   validation {
     condition     = length(var.terraform_token) > 0
@@ -316,6 +352,15 @@ variable "terraform_api_endpoint" {
 #########################################
 # AFT VPC Variables
 #########################################
+variable "aft_enable_vpc" {
+  description = "Flag turning use of VPC on/off for AFT"
+  type        = bool
+  default     = true
+  validation {
+    condition     = contains([true, false], var.aft_enable_vpc)
+    error_message = "Valid values for var: aft_enable_vpc are (true, false)."
+  }
+}
 
 variable "aft_vpc_cidr" {
   type        = string
@@ -364,5 +409,19 @@ variable "aft_vpc_public_subnet_02_cidr" {
   validation {
     condition     = can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}(\\/([0-9]|[1-2][0-9]|3[0-2]))?$", var.aft_vpc_public_subnet_02_cidr))
     error_message = "Variable var: aft_vpc_public_subnet_02_cidr value must be a valid network CIDR, x.x.x.x/y."
+  }
+}
+
+#########################################
+# AFT Metrics Reporting Variables
+#########################################
+
+variable "aft_metrics_reporting" {
+  description = "Flag toggling reporting of operational metrics"
+  type        = bool
+  default     = true
+  validation {
+    condition     = contains([true, false], var.aft_metrics_reporting)
+    error_message = "Valid values for var: aft_metrics_reporting are (true, false)."
   }
 }
